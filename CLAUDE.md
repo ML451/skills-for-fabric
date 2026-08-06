@@ -1,14 +1,20 @@
 # Microsoft Fabric Development Instructions
 
-> **Update Check**: At session start, check for skills-for-fabric updates by reading the remote `package.json` version from `https://github.com/microsoft/skills-for-fabric` (via `git fetch origin main --quiet && git show origin/main:package.json` or GitHub API with authentication) and comparing with the local `package.json` version. Show changelog if update available.
+> **Update Check**: At session start, check for skills-for-fabric updates by reading the remote `package.json` version from `https://github.com/microsoft/skills-for-fabric` (via `git fetch origin main --quiet && git show origin/main:package.json` or GitHub API with authentication) and comparing with the local `package.json` version (currently pinned at `0.3.5`). Show changelog if update available. `skills/check-updates/SKILL.md` implements this check on request ("check for updates", "what version") — prefer it over ad hoc git/API calls.
 
 This project uses Microsoft Fabric for data engineering, warehousing, and analytics.
 
 ## Architecture Mode
 
 - Use the hybrid layering model: **Agents → Skills → Common**.
-- For cross-workload orchestration, start with `agents/FabricDataEngineer.agent.md`.
-- Delegate deep endpoint implementation to relevant skills under `skills/`.
+- Agents live under `agents/` and orchestrate cross-workload work, delegating deep endpoint implementation to the relevant skill(s) under `skills/` (each agent's frontmatter lists its `delegates_to` skills):
+  - `FabricDataEngineer.agent.md` — default entry point for cross-workload data engineering (Spark, Warehouse, Pipelines, Lakehouse architecture, data quality).
+  - `FabricAdmin.agent.md` — capacity, governance, security, cost, and observability across workloads.
+  - `FabricAppDev.agent.md` — full-stack apps on top of Fabric (ODBC/XMLA/REST from Python).
+  - `FabricMigrationEngineer.agent.md` — Synapse/HDInsight/Databricks → Fabric migration orchestration; see Migration workload below.
+  - `FabricIQ.agent.md` — natural-language Q&A over Power BI reports/semantic models; **read `skills/fabriciq/SKILL.md` in full before calling any FabricIQ MCP tool** (mandatory pre-flight, see the agent's own § Pre-Flight).
+- `common/` holds workload-specific reference material shared across the authoring/consumption/operations skill split for the same workload, so the split doesn't duplicate the underlying API/concept docs: `COMMON-CORE.md` / `COMMON-CLI.md` / `ITEM-DEFINITIONS-CORE.md` (cross-workload basics), plus one or two `<WORKLOAD>-CORE.md` files per workload (`SPARK-AUTHORING-CORE.md`, `SPARK-CONSUMPTION-CORE.md`, `SPARK-MONITORING-CORE.md`, `SPARK-NOTEBOOK-AUTHORING-CORE.md`, `SQLDW-AUTHORING-CORE.md`, `SQLDW-CONSUMPTION-CORE.md`, `DATAFLOWS-AUTHORING-CORE.md`, `DATAFLOWS-CONSUMPTION-CORE.md`, `EVENTSTREAM-AUTHORING-CORE.md`, `EVENTSTREAM-CONSUMPTION-CORE.md`, `EVENTHOUSE-AUTHORING-CORE.md`, `EVENTHOUSE-CONSUMPTION-CORE.md`) and a `notebook-authoring/` subfolder (connections, context/param resolution, lakehouse paths/tables, library management, ML workflow, troubleshooting). Skills reference these rather than restating them.
+- The marketplace also groups skills into installable bundles under `plugins/` (`fabric-authoring`, `fabric-consumption`, `fabric-operations`, `fabric-skills`, `powerbi-authoring`) — see the root `README.md` for what each bundle contains; this file documents the skills themselves, not the packaging.
 
 ## Authentication
 
@@ -51,12 +57,15 @@ https://learn.microsoft.com/en-us/rest/api/fabric/articles/
 - **Lakehouse**: Delta tables, Spark, file management
   - Docs: https://learn.microsoft.com/en-us/fabric/data-engineering/lakehouse-overview
   - Authoring skill: `skills/spark-authoring-cli/SKILL.md` — notebook authoring, Lakehouse authoring, Materialized Lake Views, and refresh-friendly Spark patterns.
+  - Consumption skill: `skills/spark-consumption-cli/SKILL.md` — interactive PySpark/Spark SQL over Livy sessions: DataFrames, cross-lakehouse joins, Delta time-travel, unstructured/JSON analysis. Use for explicit PySpark/DataFrame/Livy asks, not simple SQL.
   - Operations skill: `skills/mlv-operations-cli/SKILL.md` — MLV refresh scheduling, job monitoring, and cancellation via REST API. Use for "schedule MLV refresh", "trigger refresh", "monitor refresh status".
 - **Notebooks**: PySpark notebooks with mssparkutils
   - Docs: https://learn.microsoft.com/en-us/fabric/data-engineering/how-to-use-notebook
 - **Spark Jobs**: Production Spark workloads
   - Docs: https://learn.microsoft.com/en-us/fabric/data-engineering/spark-job-definition
   - Operations skill: `skills/spark-operations-cli/SKILL.md` — read-only triage for failed jobs, stuck sessions, performance bottlenecks
+- **Medallion Architecture**: end-to-end Bronze/Silver/Gold lakehouse design
+  - Skill: `skills/e2e-medallion-architecture/SKILL.md` — multi-layer workspace setup, ingestion-to-analytics pipelines, per-layer Spark config, data quality enforcement.
 
 ### Data Warehouse
 - **Warehouse**: T-SQL data warehouse
@@ -73,7 +82,15 @@ https://learn.microsoft.com/en-us/rest/api/fabric/articles/
   - Docs: https://learn.microsoft.com/en-us/fabric/data-factory/dataflows-gen2-overview
   - Authoring skill: `skills/dataflows-authoring-cli/SKILL.md` — dataflow lifecycle management, Power Query M mashup authoring
   - Consumption skill: `skills/dataflows-consumption-cli/SKILL.md` — read-only dataflow exploration, monitoring, status queries
+  - Save-as skill: `skills/dataflows-save-as-authoring-cli/SKILL.md` — Gen1 → Gen2.1 CI/CD save-as: tenant/workspace scans, seven-signal readiness assessment (incremental refresh, BYOSA storage, Power Automate triggers, pipeline dependencies, linked entities, DirectQuery, caller-not-owner), Readiness Snapshot output.
   - Primary CLI tool: `az rest` via Fabric REST API
+
+### Migration
+- **Synapse → Fabric**: `skills/synapse-migration/SKILL.md` — mssparkutils→notebookutils (incl. env→runtime namespace change), Linked Services → Data Connections/Shortcuts, Spark Pools/Lake Databases/Notebooks/Spark Job Definitions.
+- **HDInsight → Fabric**: `skills/hdinsight-migration/SKILL.md` — HiveContext/standalone SparkContext → pre-instantiated SparkSession, WASB/ABFS → OneLake abfss Shortcuts, Hive DDL → Delta Lake, Oozie workflow mapping.
+- **Databricks → Fabric**: `skills/databricks-migration/SKILL.md` — dbutils→notebookutils substitution table, secret scope → Key Vault, widgets → parameter-tagged cells, library installs → Fabric Environments, Unity Catalog three-level namespace → Lakehouse two-level schemas.
+- **Data Factory pipelines**: `skills/pipeline-migration/SKILL.md` — Synapse Data Factory → Fabric Data Factory: linked services → Fabric connections, inlined dataset definitions, global parameters → Variable Libraries, SynapseNotebook → TridentNotebook activities. SSIS, SHIR-only, and Databricks activities are parked (not migrated).
+- Cross-workload orchestration of any of the above: `agents/FabricMigrationEngineer.agent.md`, which also delegates to `spark-authoring-cli`, `sqldw-authoring-cli`, and `e2e-medallion-architecture` for post-migration infrastructure.
 
 ### Real-Time Intelligence
 - **Eventstreams**: Real-time data ingestion
